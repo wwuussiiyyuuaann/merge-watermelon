@@ -21,7 +21,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     padding: 16px;
   }
   .topbar {
@@ -30,14 +30,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
   }
   .scores { display: flex; gap: 16px; }
   .score-box { text-align: left; }
   .score-box .label { font-size: 12px; opacity: .6; }
   .score-box .value { font-size: 22px; font-weight: 700; }
-  .controls { display: flex; gap: 8px; align-items: center; }
-  select, button {
+
+  /* 下一个水果：移到画布外，不再遮挡游戏视野 */
+  .next-box { display: flex; align-items: center; gap: 5px; }
+  .next-box .label { font-size: 12px; opacity: .6; }
+  #nextPreview { display: block; width: 38px; height: 38px; }
+
+  select, button, input {
     font-family: inherit;
     font-size: 13px;
     color: #fff;
@@ -45,16 +50,30 @@
     border: 1px solid #3d4358;
     border-radius: 8px;
     padding: 8px 12px;
-    cursor: pointer;
   }
+  select, button { cursor: pointer; }
+  input { cursor: text; outline: none; }
+  input::placeholder { color: #7a8299; }
+  input:focus { border-color: #5b6fbf; }
   button:hover, select:hover { background: #383f56; }
   button:active { transform: scale(.97); }
-  .stage {
-    position: relative;
+
+  /* 邀请码栏 */
+  .codebar {
     width: 420px;
     max-width: 96vw;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
-  canvas {
+  .codebar input { width: 150px; }
+  .code-msg { font-size: 12px; }
+  .code-msg.ok { color: #7bed9f; }
+  .code-msg.err { color: #ff6b81; }
+
+  .stage { position: relative; width: 420px; max-width: 96vw; }
+  #game {
     display: block;
     width: 100%;
     border-radius: 14px;
@@ -94,10 +113,18 @@
         <div class="value" id="best">0</div>
       </div>
     </div>
-    <div class="controls">
-      <select id="themeSelect" title="切换主题皮肤"></select>
-      <button id="restartBtn">重新开始</button>
+    <div class="next-box" title="下一个要投放的水果">
+      <span class="label">下一个</span>
+      <canvas id="nextPreview"></canvas>
     </div>
+    <button id="restartBtn">重新开始</button>
+  </div>
+
+  <div class="codebar">
+    <select id="themeSelect" title="切换主题皮肤"></select>
+    <input id="codeInput" type="text" placeholder="输入邀请码解锁主题" autocomplete="off">
+    <button id="unlockBtn">解锁</button>
+    <span class="code-msg" id="codeMsg"></span>
   </div>
 
   <div class="stage">
@@ -110,7 +137,7 @@
     </div>
   </div>
 
-  <div class="hint">移动鼠标 / 手指选择位置，点击或松手投放水果。两个相同的水果碰到一起就会合成更大的。</div>
+  <div class="hint">移动鼠标 / 手指选择位置，点击或松手投放水果。两个相同的水果碰到一起就会合成更大的。部分主题需要用邀请码解锁。</div>
 </div>
 
 <script>
@@ -154,16 +181,21 @@ const FRUITS = [
 const MAX_LEVEL = FRUITS.length - 1;
 
 /* =====================================================================
-   主题系统（数据驱动）
+   主题系统（数据驱动 + 邀请码门禁）
    ---------------------------------------------------------------------
    · colors[i]  : 第 i 级水果的纯色（永远作为兜底底色）
    · folder/ext : 若设置，会尝试加载 folder/(i+1).ext 作为贴图，
                   加载失败自动回退到纯色，所以图片可以慢慢补。
-   以后加"图片版"：新建文件夹放 1.png~11.png，再在下面加一条配置即可。
+   · code       : 邀请码。设置了 code 的主题默认隐藏，输入对应邀请码后
+                  才会出现在主题下拉框里（解锁状态存在浏览器本地）。
+
+   注意：这是静态网页，邀请码属于"软门禁"，能挡住普通访客，
+   但无法防御懂技术的人查看源码。适合休闲小游戏，不适合真正的保密。
    ===================================================================== */
 const THEMES = {
   classic: {
     name: '经典纯色',
+    // 没有 code = 所有人默认可用的基础主题
     colors: [
       '#e63946', // 樱桃
       '#ff6b81', // 草莓
@@ -178,14 +210,43 @@ const THEMES = {
       '#2ed573', // 大西瓜
     ],
   },
-  // 示例：以后你发图片后，会新增类似下面这样的主题
+
+  /* 演示用的加密主题：验证邀请码机制是否正常工作。
+     以后加了图片主题，把 code 写上即可，逻辑完全一样。 */
+  macaron: {
+    name: '马卡龙配色',
+    code: '1234',
+    colors: [
+      '#ff9aa2', // 樱桃
+      '#ffb7b2', // 草莓
+      '#cdb4db', // 葡萄
+      '#fff1a8', // 柠檬
+      '#ffd6a5', // 橙子
+      '#ffc8dd', // 桃子
+      '#bde0fe', // 苹果
+      '#a2d2ff', // 梨
+      '#caffbf', // 香蕉
+      '#9bf6ff', // 哈密瓜
+      '#b5ead7', // 大西瓜
+    ],
+  },
+
+  // 以后加图片主题的写法示例：
   // fruit: {
   //   name: '水果图片版',
+  //   code: '你设的邀请码',
   //   folder: 'themes/fruit',
   //   ext: 'png',
   //   colors: [ /* 11 个兜底色 */ ],
   // },
 };
+
+/* ---------- 待投放水果的预览（画布外的小画布） ---------- */
+const NEXT_SIZE = 76;            // 小画布的像素尺寸（CSS 显示为 38px，2 倍清晰度）
+const nextCanvas = document.getElementById('nextPreview');
+const nextCtx = nextCanvas.getContext('2d');
+nextCanvas.width = NEXT_SIZE;
+nextCanvas.height = NEXT_SIZE;
 
 /* ---------- 运行时状态 ---------- */
 const canvas = document.getElementById('game');
@@ -211,23 +272,79 @@ const bestEl = document.getElementById('best');
 const overlay = document.getElementById('overlay');
 const finalScoreEl = document.getElementById('finalScore');
 const themeSelect = document.getElementById('themeSelect');
+const codeInput = document.getElementById('codeInput');
+const codeMsg = document.getElementById('codeMsg');
 
 bestEl.textContent = best;
 
-/* 填充主题下拉框 */
-Object.keys(THEMES).forEach(key => {
-  const opt = document.createElement('option');
-  opt.value = key;
-  opt.textContent = THEMES[key].name;
-  themeSelect.appendChild(opt);
-});
+/* =====================================================================
+   邀请码 / 主题解锁
+   ===================================================================== */
+const UNLOCK_KEY = 'merge_unlocked_themes';
+const THEME_PREF_KEY = 'merge_theme_pref';
 
-/* ---------- 主题图片加载 ---------- */
+let unlockedThemes = (function () {
+  try { return new Set(JSON.parse(localStorage.getItem(UNLOCK_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+})();
+
+/* 主题是否可用：没设 code 的永远可用，设了 code 的要先解锁 */
+function isThemeAvailable(key) {
+  const t = THEMES[key];
+  if (!t) return false;
+  return !t.code || unlockedThemes.has(key);
+}
+
+/* 按解锁情况重建下拉框（未解锁的主题完全不出现在列表里） */
+function rebuildThemeSelect() {
+  if (!isThemeAvailable(themeKey)) themeKey = 'classic';
+  themeSelect.innerHTML = '';
+  Object.keys(THEMES).forEach(key => {
+    if (!isThemeAvailable(key)) return;
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = THEMES[key].name;
+    themeSelect.appendChild(opt);
+  });
+  themeSelect.value = themeKey;
+}
+
+function setCodeMsg(text, kind) {
+  codeMsg.textContent = text;
+  codeMsg.className = 'code-msg' + (kind ? ' ' + kind : '');
+}
+
+function tryUnlock() {
+  const code = codeInput.value.trim();
+  if (!code) { setCodeMsg('请输入邀请码', 'err'); return; }
+
+  const keys = Object.keys(THEMES);
+  const matched = keys.find(k => THEMES[k].code === code && !unlockedThemes.has(k));
+  const already = keys.find(k => THEMES[k].code === code && unlockedThemes.has(k));
+
+  if (matched) {
+    unlockedThemes.add(matched);
+    localStorage.setItem(UNLOCK_KEY, JSON.stringify(Array.from(unlockedThemes)));
+    themeKey = matched;
+    localStorage.setItem(THEME_PREF_KEY, matched);
+    rebuildThemeSelect();
+    loadTheme(matched);
+    setCodeMsg('解锁成功：' + THEMES[matched].name, 'ok');
+    codeInput.value = '';
+  } else if (already) {
+    setCodeMsg('这个邀请码已经解锁过了', 'ok');
+  } else {
+    setCodeMsg('邀请码不正确', 'err');
+  }
+}
+
+/* ---------- 主题图片加载（仅对已解锁主题加载） ---------- */
 function loadTheme(key) {
+  if (!isThemeAvailable(key)) key = 'classic';
   themeKey = key;
   themeImages = new Array(FRUITS.length).fill(null);
   const theme = THEMES[key];
-  if (!theme.folder) return; // 纯色主题，无需加载
+  if (!theme || !theme.folder) return; // 纯色主题，无需加载
   const ext = theme.ext || 'png';
   for (let i = 0; i < FRUITS.length; i++) {
     const img = new Image();
@@ -288,7 +405,6 @@ function drop() {
   if (!canDrop || gameOver || !current) return;
   canDrop = false;
   const level = current.level;
-  const r = FRUITS[level].radius;
   const body = makeFruitBody(level, current.x, SPAWN_Y);
   World.add(world, body);
   fruits.push(body);
@@ -378,37 +494,47 @@ function endGame() {
 }
 
 /* ---------- 绘制 ---------- */
-function drawFruit(x, y, level, angle) {
-  const r = FRUITS[level].radius;
+/* 统一的画水果函数：可指定目标画布和缩放倍率，供主画布与小预览共用 */
+function drawFruit(c, x, y, level, angle, scale) {
+  scale = scale || 1;
+  const r = FRUITS[level].radius * scale;
   const theme = THEMES[themeKey];
   const img = themeImages[level];
 
-  ctx.save();
-  ctx.translate(x, y);
-  if (angle) ctx.rotate(angle);
+  c.save();
+  c.translate(x, y);
+  if (angle) c.rotate(angle);
 
   if (img && img.complete && img.naturalWidth > 0) {
     // 图片贴图：裁成圆形
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.save();
-    ctx.clip();
-    ctx.drawImage(img, -r, -r, r * 2, r * 2);
-    ctx.restore();
+    c.beginPath();
+    c.arc(0, 0, r, 0, Math.PI * 2);
+    c.closePath();
+    c.save();
+    c.clip();
+    c.drawImage(img, -r, -r, r * 2, r * 2);
+    c.restore();
   } else {
     // 纯色兜底
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fillStyle = theme.colors[level] || '#999';
-    ctx.fill();
+    c.beginPath();
+    c.arc(0, 0, r, 0, Math.PI * 2);
+    c.fillStyle = (theme.colors && theme.colors[level]) || '#999';
+    c.fill();
     // 一点高光让它更立体
-    ctx.beginPath();
-    ctx.arc(-r * 0.3, -r * 0.3, r * 0.28, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,.25)';
-    ctx.fill();
+    c.beginPath();
+    c.arc(-r * 0.3, -r * 0.3, r * 0.28, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,255,255,.25)';
+    c.fill();
   }
-  ctx.restore();
+  c.restore();
+}
+
+/* 在顶部栏的小画布里画"下一个"水果 */
+function renderNextPreview() {
+  nextCtx.clearRect(0, 0, NEXT_SIZE, NEXT_SIZE);
+  const r = FRUITS[nextLevel].radius;
+  const target = NEXT_SIZE / 2 - 3;
+  drawFruit(nextCtx, NEXT_SIZE / 2, NEXT_SIZE / 2, nextLevel, 0, target / r);
 }
 
 function render() {
@@ -436,7 +562,7 @@ function render() {
 
   // 世界里的水果
   for (const f of fruits) {
-    drawFruit(f.position.x, f.position.y, f.fruitLevel, f.angle);
+    drawFruit(ctx, f.position.x, f.position.y, f.fruitLevel, f.angle);
   }
 
   // 待投放水果 + 瞄准虚线
@@ -449,14 +575,11 @@ function render() {
     ctx.lineTo(current.x, FLOOR);
     ctx.stroke();
     ctx.setLineDash([]);
-    drawFruit(current.x, SPAWN_Y, current.level, 0);
+    drawFruit(ctx, current.x, SPAWN_Y, current.level, 0);
   }
 
-  // 下一个预览
-  ctx.fillStyle = 'rgba(0,0,0,.4)';
-  ctx.font = '11px sans-serif';
-  ctx.fillText('下一个', 18, 30);
-  drawFruit(46, 52, nextLevel, 0);
+  // "下一个"已移到画布外的顶部栏，不再遮挡视野
+  renderNextPreview();
 }
 
 /* ---------- 主循环 ---------- */
@@ -498,17 +621,27 @@ canvas.addEventListener('touchstart', e => {
   drop();
 }, { passive: false });
 
-/* ---------- 按钮 ---------- */
+/* ---------- 按钮 / 邀请码 ---------- */
 document.getElementById('restartBtn').addEventListener('click', reset);
 document.getElementById('againBtn').addEventListener('click', reset);
+document.getElementById('unlockBtn').addEventListener('click', tryUnlock);
+codeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') tryUnlock();
+});
 themeSelect.addEventListener('change', e => {
   loadTheme(e.target.value);
+  localStorage.setItem(THEME_PREF_KEY, e.target.value);
 });
 
 /* ---------- 启动 ---------- */
-loadTheme('classic');
-reset();
-requestAnimationFrame(loop);
+(function boot() {
+  const pref = localStorage.getItem(THEME_PREF_KEY);
+  themeKey = (pref && isThemeAvailable(pref)) ? pref : 'classic';
+  rebuildThemeSelect();
+  loadTheme(themeKey);
+  reset();
+  requestAnimationFrame(loop);
+})();
 </script>
 </body>
 </html>
