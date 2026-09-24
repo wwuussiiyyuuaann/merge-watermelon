@@ -137,7 +137,7 @@
     </div>
   </div>
 
-  <div class="hint">移动鼠标 / 手指选择位置，点击或松手投放水果。两个相同的水果碰到一起就会合成更大的。部分主题需要用邀请码解锁。</div>
+  <div class="hint">按住并拖动选择位置，松手投放水果（可以想好再放）。两个相同的水果碰到一起就会合成更大的。部分主题需要用邀请码解锁。</div>
 </div>
 
 <script>
@@ -595,31 +595,51 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-/* ---------- 输入 ---------- */
+/* ---------- 输入 ----------
+   交互模式：按住拖动选择位置，松手才投放（方便思考）。
+   鼠标：在画布上按住 → 移动跟随 → 松手投放（松手在窗口任何位置都算）。
+   触屏：手指按下 → 拖动跟随 → 抬起投放。 */
 function toCanvasX(clientX) {
   const rect = canvas.getBoundingClientRect();
   return (clientX - rect.left) * (W / rect.width);
 }
-canvas.addEventListener('mousemove', e => {
-  pointerX = toCanvasX(e.clientX);
+function movePointerTo(clientX) {
+  pointerX = toCanvasX(clientX);
   if (current) current.x = clampX(current.level, pointerX);
+}
+
+let pressing = false; // 手指/鼠标当前是否按住（用于区分"拖动中"和"只是划过"）
+
+canvas.addEventListener('mousemove', e => {
+  movePointerTo(e.clientX);
 });
 canvas.addEventListener('mousedown', e => {
-  pointerX = toCanvasX(e.clientX);
-  if (current) current.x = clampX(current.level, pointerX);
+  e.preventDefault();
+  pressing = true;
+  movePointerTo(e.clientX);
+});
+/* 松手才投放；监听在 window 上，鼠标滑出画布松手也生效 */
+window.addEventListener('mouseup', e => {
+  if (!pressing) return;
+  pressing = false;
+  movePointerTo(e.clientX);
   drop();
 });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  pointerX = toCanvasX(e.touches[0].clientX);
-  if (current) current.x = clampX(current.level, pointerX);
+  movePointerTo(e.touches[0].clientX);
 }, { passive: false });
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  pointerX = toCanvasX(e.touches[0].clientX);
-  if (current) current.x = clampX(current.level, pointerX);
-  drop();
+  pressing = true;
+  movePointerTo(e.touches[0].clientX);
 }, { passive: false });
+canvas.addEventListener('touchend', e => {
+  if (!pressing) return;
+  pressing = false;
+  /* 手指抬起时以最后一次拖动到的位置为准（touchend 的 touches 为空） */
+  drop();
+});
 
 /* ---------- 按钮 / 邀请码 ---------- */
 document.getElementById('restartBtn').addEventListener('click', reset);
