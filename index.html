@@ -395,12 +395,26 @@ function loadTheme(key) {
   const ext = theme.ext || 'png';
   const fromLevel = theme.fromLevel || 1; // 可指定从某一级开始才有图片
   for (let i = fromLevel - 1; i < FRUITS.length; i++) {
-    const img = new Image();
-    const idx = i;
-    img.onload = () => { themeImages[idx] = img; };
-    img.onerror = () => { themeImages[idx] = null; }; // 回退纯色
-    img.src = `${theme.folder}/${i + 1}.${ext}`;
+    loadThemeImage(theme.folder, ext, i, 4);
   }
+}
+
+/* 带重试的图片加载：网络偶发失败（比如国内访问 github.io）时
+   自动隔几秒重试，成功了对应水果就会自动变回图片。
+   重试时加随机参数，避免再拿到失败过的缓存。
+   重试前校验主题没被切换，避免旧主题图片串到新主题。 */
+function loadThemeImage(folder, ext, idx, retries, forKey) {
+  const key = forKey || themeKey;
+  const img = new Image();
+  img.onload = () => { if (themeKey === key) themeImages[idx] = img; };
+  img.onerror = () => {
+    if (retries > 0 && themeKey === key) {
+      const delay = [1000, 2000, 4000, 8000][4 - retries] || 8000;
+      setTimeout(() => loadThemeImage(folder, ext, idx, retries - 1, key), delay);
+    }
+  };
+  const bust = retries < 4 ? '?r=' + Date.now() : '';
+  img.src = `${folder}/${idx + 1}.${ext}${bust}`;
 }
 
 /* ---------- 随机生成一个可投放的小水果等级（前 5 级） ---------- */
