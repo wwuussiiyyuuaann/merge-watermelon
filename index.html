@@ -403,6 +403,8 @@ function reset() {
   overTimer = 0;
   gameOver = false;
   canDrop = true;
+  announceText = null;        // 清除本局残留播报
+  score500Shown = false;      // 重开一局后 500 分播报可再次触发
   scoreEl.textContent = '0';
   overlay.classList.remove('show');
   nextLevel = randomSmallLevel();
@@ -484,6 +486,75 @@ function handleCollision(event) {
 function addScore(level) {
   score += (level + 1) * 2;
   scoreEl.textContent = score;
+  checkAnnouncements(level);
+}
+
+/* =====================================================================
+   文字播报：在画面中央短暂显示醒目大字
+   ===================================================================== */
+let announceText = null;     // 当前播报文字（null = 无）
+let announceUntil = 0;       // 播报截止时间戳
+let announceScale = 0;       // 弹出动画进度 0~1
+const ANNOUNCE_MS = 2600;    // 停留时长
+let score500Shown = false;   // 本局是否已播报过 500 分（重开一局可再触发）
+
+function announce(text) {
+  announceText = text;
+  announceUntil = performance.now() + ANNOUNCE_MS;
+  announceScale = 0;
+}
+
+/* 播报触发规则集中在这里，方便以后增改 */
+function checkAnnouncements(newLevel) {
+  // 得分首次达到 500
+  if (!score500Shown && score >= 500) {
+    score500Shown = true;
+    announce('猜猜还有谁');
+  }
+  // 合成出第 9 个水果（香蕉，等级序号 8）
+  if (newLevel === 8) {
+    announce('马上就要见到导员哥哥了，好期待呀！！！');
+  }
+}
+
+/* 每帧绘制播报（带弹出缩放 + 淡出） */
+function renderAnnouncement() {
+  if (!announceText) return;
+  const now = performance.now();
+  if (now > announceUntil) { announceText = null; return; }
+
+  // 前 250ms 弹性放大，最后 400ms 淡出
+  if (now < announceUntil - ANNOUNCE_MS + 250) {
+    announceScale = Math.min(1, announceScale + 0.12);
+  }
+  let alpha = 1;
+  if (announceUntil - now < 400) alpha = (announceUntil - now) / 400;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(W / 2, H / 2);
+  const pop = 0.6 + 0.4 * (1 - Math.pow(1 - announceScale, 3)); // easeOutCubic
+  ctx.scale(pop, pop);
+
+  // 半透明深色底条，保证任何背景下文字都清晰
+  ctx.font = '700 30px "PingFang SC", "Microsoft YaHei", sans-serif';
+  const tw = ctx.measureText(announceText).width;
+  const boxW = tw + 56, boxH = 66;
+  ctx.fillStyle = 'rgba(20,22,32,.82)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 16);
+  else ctx.rect(-boxW / 2, -boxH / 2, boxW, boxH); // 老浏览器兜底：直角
+  ctx.fill();
+  // 金色描边点缀
+  ctx.strokeStyle = '#ffd166';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffd166';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(announceText, 0, 2);
+  ctx.restore();
 }
 
 /* ---------- 游戏结束判定 ---------- */
@@ -603,6 +674,9 @@ function render() {
 
   // "下一个"已移到画布外的顶部栏，不再遮挡视野
   renderNextPreview();
+
+  // 画面中央的文字播报（最上层）
+  renderAnnouncement();
 }
 
 /* ---------- 主循环 ---------- */
