@@ -237,6 +237,11 @@ const THEMES = {
     code: 'xiaojianqiban',
     folder: 'themes/xiaojianqiban',
     ext: 'png',
+    /* 本主题专属播报：其他主题不会出现 */
+    announcements: {
+      score100: '猜猜还有谁',
+      level9: '马上就要见到导员哥哥了，好期待呀！！！',
+    },
     colors: [
       '#e63946', // 樱桃（纯色）
       '#ff6b81', // 草莓（兜底色，以下同）
@@ -503,16 +508,18 @@ function announce(text) {
   announceScale = 0;
 }
 
-/* 播报触发规则集中在这里，方便以后增改 */
+/* 播报触发规则：从当前主题的 announcements 配置里读取。
+   没配置播报的主题（如经典纯色）完全不显示任何播报。
+   可配置的触发点：score100（得分达 100，每局一次）、level9（合成第 9 级）。 */
 function checkAnnouncements(newLevel) {
-  // 得分首次达到 100
-  if (!score100Shown && score >= 100) {
+  const rules = THEMES[themeKey] && THEMES[themeKey].announcements;
+  if (!rules) return;
+  if (rules.score100 && !score100Shown && score >= 100) {
     score100Shown = true;
-    announce('猜猜还有谁');
+    announce(rules.score100);
   }
-  // 合成出第 9 个水果（香蕉，等级序号 8）
-  if (newLevel === 8) {
-    announce('马上就要见到导员哥哥了，好期待呀！！！');
+  if (rules.level9 && newLevel === 8) {
+    announce(rules.level9);
   }
 }
 
@@ -747,6 +754,7 @@ codeInput.addEventListener('keydown', e => {
 themeSelect.addEventListener('change', e => {
   loadTheme(e.target.value);
   localStorage.setItem(THEME_PREF_KEY, e.target.value);
+  announceText = null;   // 播报跟主题走，切换时清掉旧主题的残留播报
 });
 
 /* ---------- 启动 ---------- */
