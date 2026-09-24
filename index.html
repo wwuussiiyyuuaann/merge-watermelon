@@ -231,6 +231,28 @@ const THEMES = {
     ],
   },
 
+  /* 头像照片版：第 1 级（樱桃）用纯色，第 2~11 级用 themes/xiaojianqiban/2.png~11.png */
+  xiaojianqiban: {
+    name: '头像版',
+    code: 'xiaojianqiban',
+    folder: 'themes/xiaojianqiban',
+    ext: 'png',
+    fromLevel: 2,   // 第 1 级用纯色，从第 2 级开始用图片
+    colors: [
+      '#e63946', // 樱桃（纯色）
+      '#ff6b81', // 草莓（兜底色，以下同）
+      '#a55eea',
+      '#f7d154',
+      '#ff9f43',
+      '#ff9ff3',
+      '#ee5253',
+      '#c8d64b',
+      '#feca57',
+      '#7bed9f',
+      '#2ed573',
+    ],
+  },
+
   // 以后加图片主题的写法示例：
   // fruit: {
   //   name: '水果图片版',
@@ -346,7 +368,8 @@ function loadTheme(key) {
   const theme = THEMES[key];
   if (!theme || !theme.folder) return; // 纯色主题，无需加载
   const ext = theme.ext || 'png';
-  for (let i = 0; i < FRUITS.length; i++) {
+  const fromLevel = theme.fromLevel || 1; // 可指定从某一级开始才有图片
+  for (let i = fromLevel - 1; i < FRUITS.length; i++) {
     const img = new Image();
     const idx = i;
     img.onload = () => { themeImages[idx] = img; };
